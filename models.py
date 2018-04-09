@@ -4,11 +4,11 @@ from keras.layers.convolutional import Convolution2D, AtrousConvolution2D
 import keras.backend as K
 import theano.tensor as T
 import numpy as np
-from .dcn_vgg import dcn_vgg
-from .dcn_resnet import dcn_resnet
-from .gaussian_prior import LearningPrior
-from .attentive_convlstm import AttentiveConvLSTM
-from .config import *
+from dcn_vgg import dcn_vgg
+from dcn_resnet import dcn_resnet
+from gaussian_prior import LearningPrior
+from attentive_convlstm import AttentiveConvLSTM
+from config import *
 
 
 def repeat(x):
