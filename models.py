@@ -15,12 +15,20 @@ def repeat(x):
     return K.reshape(K.repeat(K.batch_flatten(x), nb_timestep), (b_s, nb_timestep, 512, shape_r_gt, shape_c_gt))
 
 
+def repeat_bs(x, b_s_):
+    return K.reshape(K.repeat(K.batch_flatten(x), nb_timestep), (b_s_, nb_timestep, 512, shape_r_gt, shape_c_gt))
+
+
 def repeat_shape(s):
     return (s[0], nb_timestep) + s[1:]
 
 
 def upsampling(x):
     return T.nnet.abstract_conv.bilinear_upsampling(input=x, ratio=upsampling_factor, num_input_channels=1, batch_size=b_s)
+
+
+def upsampling_bs(x, b_s_):
+    return T.nnet.abstract_conv.bilinear_upsampling(input=x, ratio=upsampling_factor, num_input_channels=1, batch_size=b_s_)
 
 
 def upsampling_shape(s):
@@ -153,3 +161,31 @@ def sam_resnet(x):
 
     return [outs_up, outs_up, outs_up]
 
+
+def sam_resnet_bs(x, b_s):
+    # Dilated Convolutional Network
+    dcn = dcn_resnet(input_tensor=x[0])
+    conv_feat = Convolution2D(512, 3, 3, border_mode='same', activation='relu')(dcn.output)
+
+    # Attentive Convolutional LSTM
+    att_convlstm = Lambda(repeat_bs, repeat_shape, arguments={'b_s_': b_s})(conv_feat)
+    att_convlstm = AttentiveConvLSTM(nb_filters_in=512, nb_filters_out=512, nb_filters_att=512,
+                                     nb_cols=3, nb_rows=3)(att_convlstm)
+
+    # Learned Prior (1)
+    priors1 = LearningPrior(nb_gaussian=nb_gaussian, init=gaussian_priors_init)(x[1])
+    concateneted = merge([att_convlstm, priors1], mode='concat', concat_axis=1)
+    learned_priors1 = AtrousConvolution2D(512, 5, 5, border_mode='same', activation='relu',
+                                          atrous_rate=(4, 4))(concateneted)
+
+    # Learned Prior (2)
+    priors2 = LearningPrior(nb_gaussian=nb_gaussian, init=gaussian_priors_init)(x[1])
+    concateneted = merge([learned_priors1, priors2], mode='concat', concat_axis=1)
+    learned_priors2 = AtrousConvolution2D(512, 5, 5, border_mode='same', activation='relu',
+                                          atrous_rate=(4, 4))(concateneted)
+
+    # Final Convolutional Layer
+    outs = Convolution2D(1, 1, 1, border_mode='same', activation='relu')(learned_priors2)
+    outs_up = Lambda(upsampling_bs, upsampling_shape, arguments={'b_s_': b_s})(outs)
+
+    return [outs_up, outs_up, outs_up]
