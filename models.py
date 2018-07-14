@@ -133,6 +133,34 @@ def sam_vgg(x):
     return [outs_up, outs_up, outs_up]
 
 
+def sam_vgg_bs(x, b_s):
+    # Dilated Convolutional Network
+    dcn = dcn_vgg(input_tensor=x[0])
+
+    # Attentive Convolutional LSTM
+    att_convlstm = Lambda(repeat_bs, repeat_shape, arguments={'b_s_': b_s})(dcn.output)
+    att_convlstm = AttentiveConvLSTM(nb_filters_in=512, nb_filters_out=512, nb_filters_att=512,
+                                     nb_cols=3, nb_rows=3)(att_convlstm)
+
+    # Learned Prior (1)
+    priors1 = LearningPrior(nb_gaussian=nb_gaussian, init=gaussian_priors_init)(x[1])
+    concateneted = merge([att_convlstm, priors1], mode='concat', concat_axis=1)
+    learned_priors1 = AtrousConvolution2D(512, 5, 5, border_mode='same', activation='relu',
+                                          atrous_rate=(4, 4))(concateneted)
+
+    # Learned Prior (2)
+    priors2 = LearningPrior(nb_gaussian=nb_gaussian, init=gaussian_priors_init)(x[1])
+    concateneted = merge([learned_priors1, priors2], mode='concat', concat_axis=1)
+    learned_priors2 = AtrousConvolution2D(512, 5, 5, border_mode='same', activation='relu',
+                                          atrous_rate=(4, 4))(concateneted)
+
+    # Final Convolutional Layer
+    outs = Convolution2D(1, 1, 1, border_mode='same', activation='relu')(learned_priors2)
+    outs_up = Lambda(upsampling_bs, upsampling_shape, arguments={'b_s_': b_s})(outs)
+
+    return [outs_up, outs_up, outs_up]
+
+
 def sam_resnet(x):
     # Dilated Convolutional Network
     dcn = dcn_resnet(input_tensor=x[0])
